@@ -1,5 +1,5 @@
 import re
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Any, Optional, Literal
 from typing_extensions import Self
 
@@ -8,9 +8,10 @@ class Zone(BaseModel):
 
     name: str
     pos: tuple[int, int]
-    zone: Optional[Literal["normal", "blocked", "priority", "restricted"]]
+    zone: Optional[Literal["normal", "blocked",
+                           "priority", "restricted"]] = Field(default="normal")
     weight: int = Field(default=1)
-    color: Optional[str] = Field(default=None)
+    color: str
     max_drones: Optional[int] = Field(default=1)
 
     @model_validator(mode="after")
@@ -18,10 +19,8 @@ class Zone(BaseModel):
 
         if self.zone == "restricted":
             self.weight = 2
-        elif self.zone == "priority":
-            self.weight = 0.5
         elif self.zone == "blocked":
-            self.weight = None
+            self.weight = 0
 
         return (self)
 
@@ -29,8 +28,8 @@ class Zone(BaseModel):
 class Connection(BaseModel):
 
     name: str
-    destination: str
-    active: bool = Field(default=True)
+    zone1: str
+    zone2: str
     max_link_capacity: Optional[int] = Field(default=1)
 
 
@@ -38,7 +37,8 @@ class Map(BaseModel):
 
     nb_drones: int = Field(ge=1)
     zones: dict[str, Zone]
-    zone_connections: dict[str, list[Connection]]
+    zones_connected: dict[str, list[str]]
+    connections: dict[str, Connection]
     nb_connections: int = Field(ge=1)
     start_zone: str
     end_zone: str
@@ -47,53 +47,50 @@ class Map(BaseModel):
     def get_neighbors(cls, map_dict: dict[str, Any]) -> dict[str, Any]:
 
         zone_names_set = set(map_dict["zones"].keys())
-        zone_connections = dict()
+        zones_connected: dict[str, list[str]] = dict()
         connections_set = set()
         nb_connections = len(map_dict["connections"])
         for zone_name in zone_names_set:
-            zone_connections[zone_name] = list()
-        for connection in map_dict["connections"]:
-            connection_set = frozenset({connection["zone1"], connection["zone2"]})
+            zones_connected[zone_name] = list()
+        for connection in map_dict["connections"].values():
+            connection_set = frozenset({
+                connection["zone1"], connection["zone2"]})
             if not connection_set <= zone_names_set:
-                raise ValueError("[ERROR] Connection '{connection}' links unknown zones")
+                raise ValueError("[ERROR] Connection '{connection}' "
+                                 "links unknown zones")
             zone1_name, zone2_name = connection_set
-            zone_connections[zone1_name].append({
-                "name": connection["name"], "destination": zone2_name,
-                "active": map_dict["zones"][zone1_name]["zone"] != "blocked",
-                "max_link_capacity": connection["max_link_capacity"]})
-            zone_connections[zone2_name].append({
-                "name": connection["name"], "destination": zone1_name,
-                "active": map_dict["zones"][zone1_name]["zone"] != "blocked",
-                "max_link_capacity": connection["max_link_capacity"]})
+            zones_connected[zone1_name].append(zone2_name)
+            zones_connected[zone2_name].append(zone1_name)
             connections_set.add(connection_set)
         if len(connections_set) < nb_connections:
-            raise ValueError("[ERROR] There are multiple connections with the same zones")
-        del map_dict["connections"]
-        map_dict["zone_connections"] = zone_connections
+            raise ValueError("[ERROR] There are multiple connections "
+                             "with the same zones")
+        map_dict["zones_connected"] = zones_connected
         map_dict["nb_connections"] = nb_connections
         return (map_dict)
 
     @model_validator(mode="after")
     def check_path(self) -> Self:
-    
+
         path_to_end = False
-        curr_zones_name = [self.start_zone]
-        visited_zones = curr_zones_name
+        curr_zones = [self.start_zone]
+        visited_zones = curr_zones
         max_moves = self.nb_connections
         while max_moves:
             new_zones = []
-            for zone_name in curr_zones_name:
-                for connection in self.zone_connections[zone_name]:
-                    new_zones.append(connection.destination)
-            new_zones = [zone for zone in new_zones if zone not in visited_zones]
+            for zone in curr_zones:
+                new_zones.extend(self.zones_connected[zone])
+            new_zones = [zone for zone in new_zones if
+                         zone not in visited_zones]
             curr_zones = new_zones
             visited_zones.extend(new_zones)
-            if any(self.end_zone == zone_name for zone_name in curr_zones_name):
+            if any(self.end_zone == zone for zone in curr_zones):
                 path_to_end = True
                 break
             max_moves -= 1
         if not path_to_end:
-            raise ValueError("[ERROR] There is no path from start zone to end zone")
+            raise ValueError("[ERROR] There is no path from "
+                             "start zone to end zone")
         return (self)
 
 
@@ -103,20 +100,19 @@ class ParsingFile:
 
         self.map_config = map_config
 
-    def check_args(self) -> str:
+    def check_args(self) -> None:
 
         if not self.map_config.startswith("maps/"):
             raise ValueError("[ERROR] File must be inside 'maps' folder")
         if not self.map_config.endswith(".txt"):
             raise ValueError("[ERROR] File must be text format")
 
-    def create_map_dict(self) -> None:
+    def create_map_dict(self) -> dict[str, Any]:
 
-        @staticmethod
         def read_info(key_type: str, valid_keys: list[str], value: str,
                       pattern: str, shape: str) -> dict[str, Any]:
 
-            info_dict = dict()
+            info_dict: dict[str, Any] = dict()
             info = re.search(pattern, value)
             if not info:
                 raise ValueError("[ERROR] " + key_type.capitalize() +
@@ -131,8 +127,8 @@ class ParsingFile:
             info_dict["name"] = name
             if (not metadata or "zone" not in metadata) and key_type == "zone":
                 info_dict["zone"] = "normal"
-            if ((not metadata or "max_link_capacity" not in metadata) and
-                key_type == "connection"):
+            link_cap_miss = not metadata or "max_link_capacity" not in metadata
+            if link_cap_miss and key_type == "connection":
                 info_dict["max_link_capacity"] = 1
             if metadata:
                 metadata_list = metadata.split()
@@ -141,14 +137,18 @@ class ParsingFile:
                     if key in valid_keys:
                         info_dict[key] = value
                     else:
-                        raise ValueError(f"[ERROR] '{key}' is not valid metadata")
+                        raise ValueError(f"[ERROR] '{key}' is not "
+                                         f"valid metadata")
+            if "color" not in info_dict.keys() and key_type == "zone":
+                info_dict["color"] = "blue"
             return (info_dict)
 
         start_zones = 0
         end_zones = 0
-        map_dict = dict()
+        map_dict: dict[str, Any] = dict()
         map_dict["zones"] = dict()
-        connections = []
+        map_dict["connections"] = dict()
+
         with open(self.map_config, "r") as file:
             line_count = 1
             for line in file:
@@ -170,18 +170,20 @@ class ParsingFile:
                         end_zones += 1
                         map_dict["end_zone"] = zone_info["name"]
                     if zone_info["name"] in map_dict["zones"].keys():
-                        raise ValueError("[ERROR] Different zones cant have the same name")
+                        raise ValueError("[ERROR] Different zones cant "
+                                         "have the same name")
                     map_dict["zones"][zone_info["name"]] = zone_info
                 elif var == "connection":
                     connection_info = read_info(
                         "connection", ["max_link_capacity"], value,
                         r"^([^-\s]+)\-([^-\s]+)(?:\s+\[(.*?)\])?$",
                         "<zone1-zone2> [optional]")
-                    connections.append(connection_info)
+                    map_dict["connections"][connection_info[
+                        "name"]] = connection_info
                 else:
                     raise ValueError(f"[ERROR] Unknown name '{line}'")
                 line_count += 1
         if (start_zones != 1 and end_zones != 1):
-            raise ValueError(f"[ERROR] There has to be at least one start and end zones")
-        map_dict["connections"] = connections
+            raise ValueError("[ERROR] There has to be at least "
+                             "one start and end zones")
         return (map_dict)

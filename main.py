@@ -1,6 +1,9 @@
 from argparse import ArgumentParser
-from parsing import ParsingFile, Zone, Connection, Map
+from parsing import ParsingFile, Map
 from algorithm import Algorithm
+from visuals import Animation
+from pydantic import ValidationError
+
 
 def main() -> None:
 
@@ -12,12 +15,18 @@ def main() -> None:
     try:
         parsing_file.check_args()
         map_dict = parsing_file.create_map_dict()
-        drone_map = Map(**map_dict)
-    except Exception as message:
+        map_info = Map(**map_dict)
+    except ValidationError as e:
+        for error in e.errors():
+            print(f"[ERROR] {error['msg']}")
+    except ValueError as message:
         print(message)
 
-    algorithm = Algorithm(drone_map)
-    print(algorithm.explore_zones(algorithm.start_zone))
+    algorithm = Algorithm(map_info)
+    solution = algorithm.get_fleet_solution()
+    animation = Animation(map_info, 200, 50, solution)
+    animation.start_visuals(args.map_config)
+
 
 if __name__ == "__main__":
     main()
