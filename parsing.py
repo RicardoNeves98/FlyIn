@@ -6,6 +6,8 @@ from typing_extensions import Self
 
 class Zone(BaseModel):
 
+    """Represents a zone in the map used for drone routing."""
+
     name: str
     pos: tuple[int, int]
     zone: Optional[Literal["normal", "blocked",
@@ -17,6 +19,12 @@ class Zone(BaseModel):
     @model_validator(mode="after")
     def get_weight(self) -> Self:
 
+        """Adjust zone weight based on zone type.
+
+        Returns:
+            The validated Zone instance with updated weight.
+        """
+
         if self.zone == "restricted":
             self.weight = 2
         elif self.zone == "blocked":
@@ -27,6 +35,8 @@ class Zone(BaseModel):
 
 class Connection(BaseModel):
 
+    """Represents a connection between two zones."""
+
     name: str
     zone1: str
     zone2: str
@@ -34,6 +44,8 @@ class Connection(BaseModel):
 
 
 class Map(BaseModel):
+
+    """Represents the full map configuration for drone routing."""
 
     nb_drones: int = Field(ge=1)
     zones: dict[str, Zone]
@@ -45,6 +57,21 @@ class Map(BaseModel):
 
     @model_validator(mode="before")
     def get_neighbors(cls, map_dict: dict[str, Any]) -> dict[str, Any]:
+
+        """Build adjacency list from raw connection data.
+
+        Args:
+            map_dict: Raw dictionary parsed from input file before validation.
+
+        Returns:
+            Updated dictionary containing:
+            - zones_connected (adjacency list)
+            - nb_connections (validated connection count)
+
+        Raises:
+            ValueError: If a connection references unknown zones or if
+                duplicate connections exist between the same zones.
+        """
 
         zone_names_set = set(map_dict["zones"].keys())
         zones_connected: dict[str, list[str]] = dict()
@@ -72,6 +99,15 @@ class Map(BaseModel):
     @model_validator(mode="after")
     def check_path(self) -> Self:
 
+        """Verify that a path exists between start and end zones.
+
+        Returns:
+            The validated Map instance.
+
+        Raises:
+            ValueError: If no path exists.
+        """
+
         path_to_end = False
         curr_zones = [self.start_zone]
         visited_zones = curr_zones
@@ -96,11 +132,32 @@ class Map(BaseModel):
 
 class ParsingFile:
 
+    """Parses a map configuration file into a structured Map dictionary.
+
+    This class is responsible for:
+    - Reading raw text configuration files
+    - Extracting zones, connections, and metadata
+    - Validating file structure
+    - Producing a dictionary compatible with the Map model
+    """
+
     def __init__(self, map_config: str) -> None:
+
+        """Store configuration file path.
+
+        Args:
+            map_config: Path to the input map configuration file.
+        """
 
         self.map_config = map_config
 
     def check_args(self) -> None:
+
+        """Validate configuration file path and format.
+
+        Raises:
+            ValueError: If file path or format is invalid.
+        """
 
         if not self.map_config.startswith("maps/"):
             raise ValueError("[ERROR] File must be inside 'maps' folder")
@@ -109,8 +166,46 @@ class ParsingFile:
 
     def create_map_dict(self) -> dict[str, Any]:
 
+        """Parse configuration file into a structured dictionary.
+
+        This method:
+        - Reads the input file line by line
+        - Extracts zones, connections, start/end hubs
+        - Applies default values for important missing metadata
+        - Validates naming consistency and duplicates
+
+        Returns:
+            Dictionary containing: zones, connections, start_zone,
+            end_zone and nb_drones
+
+        Raises:
+            ValueError: If file format is invalid or inconsistent.
+        """
+
         def read_info(key_type: str, valid_keys: list[str], value: str,
                       pattern: str, shape: str) -> dict[str, Any]:
+
+            """Parse a single zone or connection definition line.
+
+            This helper:
+            - Applies regex parsing
+            - Extracts structured fields
+            - Applies default metadata
+            - Validates allowed metadata keys
+
+            Args:
+                key_type: Type of element ("zone" or "connection").
+                valid_keys: Allowed metadata fields for this element type.
+                value: Raw string content from file.
+                pattern: Regex pattern used for parsing.
+                shape: Expected format description for error messages.
+
+            Returns:
+                Dictionary containing parsed structured data.
+
+            Raises:
+                ValueError: If format or metadata is invalid.
+            """
 
             info_dict: dict[str, Any] = dict()
             info = re.search(pattern, value)

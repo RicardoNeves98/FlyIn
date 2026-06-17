@@ -7,6 +7,21 @@ from pydantic import ValidationError
 
 def main() -> None:
 
+    """Entry point of the drone simulation program.
+
+    This function:
+    - Parses command-line arguments
+    - Loads and validates the map configuration file
+    - Builds the Map object using Pydantic validation
+    - Runs the routing algorithm for all drones
+    - Prints each drone's computed solution path
+    - Launches the Pygame visualization of the simulation
+
+    Raises:
+        ValidationError: If the map structure violates Pydantic constraints.
+        ValueError: If the input file format or logic is invalid.
+    """
+
     arg_parser = ArgumentParser()
     arg_parser.add_argument("map_config")
     args = arg_parser.parse_args()

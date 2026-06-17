@@ -7,8 +7,22 @@ import pygame
 
 class Drone:
 
+    """Represents a single drone moving through the map.
+
+    Each drone follows a precomputed solution path and is responsible
+    for updating its own position during the animation.
+    """
+
     def __init__(self, number: int, position: tuple[int | float, int | float],
                  solution: list[str]) -> None:
+
+        """Initialize a drone with its ID, starting position, and path.
+
+        Args:
+            number: Unique drone identifier.
+            position: Starting (x, y) coordinates in pixel space.
+            solution: List of movement steps defining the drone path.
+        """
 
         self.drone_num = number
         self.in_zone = True
@@ -21,6 +35,17 @@ class Drone:
     def get_next_zone(
             self, next_move: str, zones: dict[str, Any],
             zones_pixel: dict[str, Any]) -> str:
+
+        """Determine the next zone based on the current move.
+
+        Args:
+            next_move: Next step in the solution path.
+            zones: Dictionary of all zones in the map.
+            zones_pixel: Mapping of zones to pixel coordinates.
+
+        Returns:
+            Name of the next zone the drone should move toward.
+        """
 
         x_pos, y_pos = self.position
         next_zone = next_move
@@ -39,6 +64,22 @@ class Drone:
     def prepare_next_move(
             self, zones: dict[str, Any], zones_pixel: dict[str, Any],
             moves_num: int) -> str:
+
+        """Prepare the drone for its next movement step.
+
+        This method:
+        - Pops the next action from the solution
+        - Computes movement direction and speed
+        - Handles waiting and restricted zone logic
+
+        Args:
+            zones: Dictionary of map zones.
+            zones_pixel: Mapping of zones to pixel positions.
+            moves_num: Number of animation steps per move.
+
+        Returns:
+            A string describing the executed move for logging.
+        """
 
         if not self.solution:
             self.finished = True
@@ -64,6 +105,8 @@ class Drone:
 
     def make_small_move(self) -> None:
 
+        """Move the drone incrementally according to its current speed."""
+
         if self.speed:
             x_unit, y_unit = self.direction
             x_curr, y_curr = self.position
@@ -74,8 +117,25 @@ class Drone:
 
 class Animation:
 
+    """Handles visualization of the drone simulation using Pygame.
+
+    This class:
+    - Converts map coordinates into screen coordinates
+    - Draws the graph structure (zones and connections)
+    - Animates multiple drones moving along computed paths
+    """
+
     def __init__(self, map_info: Map, scale: int, screen_space: int,
                  solution: list[list[str]]) -> None:
+
+        """Initialize animation environment.
+
+        Args:
+            map_info: Parsed map containing zones and connections.
+            scale: Scaling factor for visual representation.
+            screen_space: Padding around the rendered map.
+            solution: List of paths, one per drone.
+        """
 
         self.zones = map_info.zones
         self.zones_connected = map_info.zones_connected
@@ -103,6 +163,14 @@ class Animation:
 
     def get_image_info(self) -> tuple[dict[str, Any], dict[str, Any]]:
 
+        """Compute screen size and zone-to-pixel coordinate mapping.
+
+        Returns:
+            Tuple containing:
+            - screen_info: width and height of the window
+            - zones_info: mapping of zones to pixel coordinates
+        """
+
         screen_info, zones_info = dict(), dict()
         x_values = [zone.pos[0] for zone in self.zones.values()]
         y_values = [zone.pos[1] for zone in self.zones.values()]
@@ -125,6 +193,15 @@ class Animation:
 
     def draw_background(self, screen_size: tuple[int, int]) -> pygame.Surface:
 
+        """Render the static background (zones and connections).
+
+        Args:
+            screen_size: Size of the pygame window.
+
+        Returns:
+            A pygame Surface containing the rendered map background.
+        """
+
         background = pygame.Surface(screen_size)
         background.fill(pygame.Color(120, 120, 120))
         used_connections = []
@@ -144,6 +221,18 @@ class Animation:
         return (background)
 
     def start_visuals(self, map_name: str) -> None:
+
+        """Run the full animation loop.
+
+        This method:
+        - Initializes Pygame
+        - Draws the static map
+        - Animates drones step-by-step
+        - Handles pause/quit events
+
+        Args:
+            map_name: Name of the map used for the window title.
+        """
 
         pygame.init()
         pygame.display.set_caption(f"Drone Simulation ({map_name})")
