@@ -11,11 +11,30 @@ class Drone:
                  solution: list[str]) -> None:
 
         self.drone_num = number
+        self.in_zone = True
         self.position = position
         self.solution = solution
         self.direction = (0, 0)
         self.speed: float = 0
         self.finished = False
+
+    def get_next_zone(
+            self, next_move: str, zones: dict[str, Any],
+            zones_pixel: dict[str, Any]) -> str:
+
+        x_pos, y_pos = self.position
+        next_zone = next_move
+        if next_move not in zones.keys():
+            self.in_zone = True
+            zone1, zone2 = next_move.split("-")
+            next_zone = zone2
+            if self.position == zones_pixel[zone2]:
+                next_zone = zone1
+        elif zones[next_zone].zone == "restricted":
+            self.in_zone = False
+        else:
+            self.in_zone = True
+        return (next_zone)
 
     def prepare_next_move(
             self, zones: dict[str, Any], zones_pixel: dict[str, Any],
@@ -23,18 +42,14 @@ class Drone:
 
         if not self.solution:
             self.finished = True
+            self.speed = 0
             return ("")
         next_move = self.solution.pop()
         if next_move == "waiting":
+            self.in_zone = True
             self.speed = 0
             return ("")
-        x_pos, y_pos = self.position
-        next_zone = next_move
-        if next_move not in zones.keys():
-            zone1, zone2 = next_move.split("-")
-            next_zone = zone2
-            if (round(x_pos), round(y_pos)) == zones_pixel[zone2]:
-                next_zone = zone1
+        next_zone = self.get_next_zone(next_move, zones, zones_pixel)
         x_pos, y_pos = self.position
         x_next, y_next = zones_pixel[next_zone]
         x_diff, y_diff = x_next - x_pos, y_next - y_pos
@@ -150,23 +165,25 @@ class Animation:
                         stop_animation = not stop_animation
             if not stop_animation:
                 if not count % self.moves_num:
-                    if turn_number:
-                        time.sleep(1)
-                    turn_number += 1
                     message = ""
                     running = False
                     for drone in self.drones:
                         if not drone.finished:
                             running = True
+                            if drone.in_zone:
+                                x_pos, y_pos = drone.position
+                                drone.position = (round(x_pos), round(y_pos))
                             message += drone.prepare_next_move(
                                 self.zones, self.zones_pixel, self.moves_num)
+                    if turn_number:
+                        time.sleep(1)
+                    turn_number += 1
                     if message:
                         print(f"Turn {turn_number}:", message)
                 screen.blit(background, (0, 0))
                 for drone in self.drones:
-                    if not drone.finished:
-                        drone.make_small_move()
-                        pygame.draw.circle(
-                            screen, pygame.Color("black"), drone.position, 10)
+                    drone.make_small_move()
+                    pygame.draw.circle(
+                        screen, pygame.Color("black"), drone.position, 10)
                 pygame.display.flip()
                 count += 1

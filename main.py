@@ -24,6 +24,8 @@ def main() -> None:
 
     algorithm = Algorithm(map_info)
     solution = algorithm.get_fleet_solution()
+    for path in solution:
+        print(path)
     animation = Animation(map_info, 200, 50, solution)
     animation.start_visuals(args.map_config)
 

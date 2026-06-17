@@ -148,7 +148,10 @@ class ParsingFile:
         map_dict: dict[str, Any] = dict()
         map_dict["zones"] = dict()
         map_dict["connections"] = dict()
-
+        zone_pattern = (
+            r"^([^\s\[\]\-]+)\s+([^\s\[\]]+)\s+([^\s\[\]]+)"
+            r"(?:\s+\[(.*?)\])?$"
+        )
         with open(self.map_config, "r") as file:
             line_count = 1
             for line in file:
@@ -161,8 +164,7 @@ class ParsingFile:
                 elif "hub" in var:
                     zone_info = read_info(
                         "zone", ["zone", "color", "max_drones"], value,
-                        r"^([^\s\[\]\-]+)\s+([^\s\[\]]+)\s+([^\s\[\]]+)(?:\s+\[(.*?)\])?$",
-                        "<name> <number> <number> [optional]")
+                        zone_pattern, "<name> <number> <number> [optional]")
                     if var == "start_hub":
                         start_zones += 1
                         map_dict["start_zone"] = zone_info["name"]
