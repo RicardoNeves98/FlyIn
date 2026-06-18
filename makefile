@@ -7,7 +7,7 @@ $(VENV):
 	python3 -m venv $(VENV)
 
 $(VENV)/.installed: $(VENV)
-	$(VENV)/bin/pip install flake8 mypy
+	$(VENV)/bin/pip install flake8 mypy pygame pydantic
 	touch $(VENV)/.installed
 
 install: $(VENV)/.installed
